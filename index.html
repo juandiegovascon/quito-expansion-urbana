@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Expansión urbana de Quito</title>
+<meta name="description" content="Mapa interactivo del DMQ: suelo de expansión urbana del PUGS 2024, crecimiento de población 2010–2022, terrenos en venta y exposición a contaminación.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2313202A'/%3E%3Cpath d='M7 22l6-10 5 7 3-4 4 7z' fill='%23D2410C'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75,600;75,800;100,500&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/leaflet/leaflet.css">
+<style>
+html,body{margin:0} body{font-size:14px;font-family:system-ui,sans-serif} img{max-width:100%} [hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+</style>
+<style>
+/* Layout: plano a la izquierda, panel de lectura a la derecha; en teléfono se apilan. Tema claro de alto contraste por decisión del usuario. */
+:root{
+  color-scheme: light;
+  --paper:#F6F7F5; --surface:#FFFFFF; --ink:#13202A; --muted:#4F5C66; --line:#CBD2D6; --wash:#ECEFEC;
+  --exp:#D2410C; --exp-wash:#FBE3D6; --nocons:#E8A600; --cons:#BCC4CA;
+  --transit:#1B4FD1; --proy:#6D28D9; --road:#7A858D; --lahar:#7A4B22; --cent:#0E6F64; --warn:#9A3412;
+  --g0:#EAF3F0; --g1:#BFE0D6; --g2:#7DC1AD; --g3:#3A947D; --g4:#0F5E4E; --l1:#EBDDE9; --l2:#C59ABE;
+  --display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45}
+*{box-sizing:border-box}
+.app{display:grid;grid-template-rows:auto auto 1fr;height:100%}
+header{padding-block:14px 10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-wrap:wrap;gap:6px 24px;align-items:baseline;border-bottom:1px solid var(--line);background:var(--surface)}
+h1{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:26px;letter-spacing:.2px;margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px;margin:0}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line);background:var(--surface)}
+.stat{padding-block:10px;padding-inline:16px;border-right:1px solid var(--line);min-width:0}
+.stat:last-child{border-right:0}
+.stat b{display:block;font-family:var(--display);font-stretch:75%;font-weight:800;font-size:24px;line-height:1.05;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.stat:first-child{padding-left:max(16px,env(safe-area-inset-left,0px))}
+.stat.k-exp b{color:var(--exp)} .stat.k-nc b{color:#9A6A00}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:0}
+#map{background:#E3E8EA;min-height:0;height:100%}
+.leaflet-container{font-family:var(--body);background:#E3E8EA}
+aside{border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0;min-width:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;background:none;padding:11px 8px;font:600 13px var(--body);color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.tabs button:focus-visible,.seg button:focus-visible,.card:focus-visible,th button:focus-visible{outline:2px solid var(--transit);outline-offset:2px}
+.pane{overflow:auto;padding:14px 16px 24px;padding-right:max(16px,env(safe-area-inset-right,0px));min-height:0;flex:1}
+.lbl{font-family:var(--display);font-stretch:75%;font-weight:600;text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--muted)}
+.corr{margin-top:18px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;border-bottom:1px solid var(--ink);padding-bottom:4px}
+.corr:first-child{margin-top:4px}
+.corr h2{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:17px;margin:0}
+.corr .n{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.cards{display:flex;flex-direction:column}
+.card{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:10px 4px 11px 10px;border-bottom:1px solid var(--line);cursor:pointer;border-left:4px solid var(--exp);background:var(--surface)}
+.card:hover{background:var(--wash)}
+.card.on{background:var(--exp-wash)}
+.card .small{grid-column:1/-1;margin:0}
+.tabs button{padding:11px 4px}
+.card h3{margin:0;font-size:15px;font-weight:600}
+.card .ha{font-family:var(--mono);font-size:13px;text-align:right;white-space:nowrap}
+.card .meta{grid-column:1/-1;color:var(--muted);font-size:12.5px}
+.chips{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11.5px;padding:1px 7px;border-radius:3px;background:var(--wash);color:var(--ink);white-space:nowrap}
+.chip.g{background:var(--g1)} .chip.v{background:#E9E0FA} .chip.w{background:#FDE6D8;color:var(--warn);font-weight:600} .chip.i{background:#E6E9EC}
+.card p{grid-column:1/-1;margin:2px 0 0;font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+.tw{overflow-x:auto}
+th{position:sticky;top:0;background:var(--surface);text-align:right;border-bottom:1px solid var(--ink);padding:0}
+th:first-child{text-align:left}
+th button{all:unset;cursor:pointer;display:block;padding:6px 6px;font-family:var(--display);font-stretch:75%;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+th button[data-on]{color:var(--ink)}
+td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{text-align:left;font-family:var(--body);white-space:normal}
+tr.r td:first-child::after{content:"rural";margin-left:6px;font-size:10.5px;color:var(--muted);font-family:var(--body)}
+tbody tr{cursor:pointer} tbody tr:hover{background:var(--wash)}
+.neg{color:#7E3A76} .pos{color:var(--g4)}
+.filter{display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:4px;overflow:hidden}
+.seg button{border:0;background:var(--surface);padding:5px 10px;font:500 12.5px var(--body);color:var(--ink);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.notes h2{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:18px;margin:18px 0 6px}
+.notes h2:first-child{margin-top:2px}
+.notes p,.notes li{max-width:62ch}
+.notes ul{padding-left:18px;margin:6px 0} .notes li{margin-bottom:7px}
+.notes a{color:var(--transit)}
+.small{font-size:12.5px;color:var(--muted)}
+/* map controls */
+.ctl{background:var(--surface);border:1px solid var(--ink);border-radius:4px;padding:10px 12px;font-size:12.5px;box-shadow:0 1px 4px rgba(19,32,42,.18);max-width:250px}
+.ctl .seg{margin:4px 0 8px;flex-wrap:wrap}
+.lotf{border:1px solid var(--ink);border-radius:4px;padding:10px 12px;margin:0 0 12px;display:flex;flex-direction:column;gap:5px;font-size:13px}.lotf label{display:flex;gap:7px;align-items:center}.lotf select{font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)}
+.leaflet-popup-content{font-family:var(--body);font-size:12.5px;line-height:1.45}.leaflet-popup-content a{color:var(--transit);font-weight:600}
+.bar{display:inline-block;width:34px;height:7px;background:var(--wash);margin-right:4px;vertical-align:middle}.bar i{display:block;height:100%}
+.pt td{white-space:nowrap}
+.ctl label{display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer}
+.ctl input{accent-color:var(--ink);margin:0}
+.sw{width:16px;height:10px;display:inline-block;border:1px solid rgba(0,0,0,.35);flex:none}
+.ln{width:18px;height:0;border-top:3px solid;display:inline-block;flex:none}
+.legend{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+.legend div{display:flex;gap:7px;align-items:center}
+.legend .ramp{display:flex;height:10px;margin:4px 0 2px;gap:0;align-items:stretch} .ramp i{flex:1;height:10px}
+.rampl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.ctl .toggle{display:none}
+.plab{font-family:var(--display);font-stretch:75%;font-weight:600;font-size:11px;color:var(--ink);text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em;pointer-events:none}
+.plab.u{font-weight:500;color:var(--muted);font-size:10px}
+.xlab{font-family:var(--display);font-stretch:75%;font-weight:800;font-size:12.5px;color:var(--exp);text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;white-space:nowrap;pointer-events:none}
+.leaflet-tooltip.tt{font-family:var(--body);font-size:12.5px;border:1px solid var(--ink);border-radius:3px;box-shadow:none;padding:6px 8px}
+.tt b{font-size:13.5px} .tt .m{font-family:var(--mono)}
+@media (max-width:900px){
+  .app{height:auto;display:block}
+  .main{display:block}
+  #map{height:62vh}
+  aside{border-left:0;border-top:1px solid var(--line)}
+  .pane{max-height:none;overflow:visible}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stat:nth-child(2){border-right:0}
+  .stat:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .stat:nth-child(3){padding-left:max(16px,env(safe-area-inset-left,0px))}
+  .ctl{max-width:210px;padding:8px 10px}
+  .ctl .body[hidden]{display:none}
+  .ctl .toggle{display:block;all:unset;cursor:pointer;font-weight:600;font-size:12.5px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Expansión urbana del Distrito Metropolitano de Quito</h1>
+    <p class="sub">Suelo de expansión del PUGS 2024, crecimiento de población 2010–2022 y precios de terrenos en Plusvalía, con vías nuevas, metro y riesgos.</p>
+  </header>
+  <section class="stats" aria-label="Cifras clave">
+    <div class="stat k-exp"><b>3.103 ha</b><span>suelo rural de expansión urbana (0,7 % del DMQ)</span></div>
+    <div class="stat k-nc"><b>10.587 ha</b><span>suelo urbano no consolidado, aún por ocupar</span></div>
+    <div class="stat"><b>+45,9 %</b><span>población rural 2010–2022 (urbana: +9,6 %)</span></div>
+    <div class="stat"><b>11</b><span>planes parciales de expansión en 5 corredores</span></div>
+  </section>
+  <div class="main">
+    <div id="map" role="region" aria-label="Mapa del DMQ"></div>
+    <aside>
+      <div class="tabs" role="tablist">
+        <button role="tab" id="t-t" aria-selected="true" aria-controls="p-t">Terrenos</button>
+        <button role="tab" id="t-c" aria-selected="false" aria-controls="p-c">Entorno</button>
+        <button role="tab" id="t-z" aria-selected="false" aria-controls="p-z">Expansión</button>
+        <button role="tab" id="t-p" aria-selected="false" aria-controls="p-p">Parroquias</button>
+        <button role="tab" id="t-n" aria-selected="false" aria-controls="p-n">Fuentes</button>
+      </div>
+      <div class="pane" id="p-t" role="tabpanel" aria-labelledby="t-t"></div>
+      <div class="pane" id="p-c" role="tabpanel" aria-labelledby="t-c" hidden></div>
+      <div class="pane" id="p-z" role="tabpanel" aria-labelledby="t-z" hidden></div>
+      <div class="pane" id="p-p" role="tabpanel" aria-labelledby="t-p" hidden>
+        <div class="filter">
+          <div class="seg" id="pf">
+            <button aria-pressed="true" data-f="all">Todas</button><button aria-pressed="false" data-f="r">Rurales</button><button aria-pressed="false" data-f="u">Urbanas</button>
+          </div>
+          <span class="small">Toca una fila para ubicarla.</span>
+        </div>
+        <div class="tw"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+        <p class="small">Población: Censos INEC 2010 y 2022. Hectáreas: cruce de la capa de subclasificación del suelo del PUGS 2024 con los límites parroquiales.</p>
+      </div>
+      <div class="pane notes" id="p-n" role="tabpanel" aria-labelledby="t-n" hidden>
+        <h2>Lectura para inversión</h2>
+        <ul>
+          <li><b>La oferta nueva está fijada por el PUGS.</b> Solo 3.103 ha del DMQ son suelo rural de expansión urbana y casi todo está dentro de 11 planes parciales. Ese suelo no se urbaniza lote por lote: necesita que el plan parcial esté aprobado y pagar la concesión onerosa de derechos (COD) para edificar más de lo básico.</li>
+          <li><b>El volumen real está en el suelo urbano no consolidado.</b> Son 10.587 ha ya urbanas pero poco ocupadas. Las mayores bolsas están en Tababela (1.218 ha), Pifo (812), San Antonio (685), Turubamba (682) y Amaguaña (607).</li>
+          <li><b>La gente se está yendo a los bordes.</b> Calderón sumó 98.146 habitantes entre 2010 y 2022, Conocoto 45.535, Turubamba 38.720 y Tumbaco 29.165. El Centro Histórico perdió el 27,6 %.</li>
+          <li><b>Las vías nuevas marcan los próximos frentes.</b> La Perimetral Metropolitana (Autopista Rumiñahui–Gualo) tiene trazado aprobado y pasa junto a San Juan de Cumbayá. Ruta Viva Fase 3 llega al plan de Puembo, la Ruta Gualo–Nuevo Aeropuerto atraviesa el plan zonal de Puembo y la Transversal Oyacoto–San Antonio toca Calderón Norte.</li>
+          <li><b>Revisa el riesgo antes de comprar.</b> El 7 % de La Betania (Alangasí) cae en la zona de lahares del Cotopaxi, y la misma zona cruza buena parte del valle de Los Chillos. Activa la capa “Lahares Cotopaxi” para verlo.</li>
+          <li><b>Las normas en los valles se están endureciendo.</b> La reforma de 2024 busca limitar el crecimiento hacia Los Chillos y Tumbaco y protege el Ilaló. En diciembre de 2025 el Concejo aprobó otra reforma sobre los planes parciales de Cumbayá. Pide el Informe de Regulación Metropolitana (IRM) de cada predio antes de decidir.</li>
+        </ul>
+        <p class="small">Esto es un mapa de información, no asesoría financiera ni legal. La zonificación de un lote concreto solo la confirma su IRM.</p>
+        <h2>Cómo se armó</h2>
+        <ul>
+          <li><b>Planificación oficial:</b> capas del Plan de Uso y Gestión del Suelo (Ordenanza PMDOT-PUGS 003-2024), servicio público <i>plan_de_uso_y_gestion_del_suelo_2024</i> del geoportal municipal GeoQuito. Incluye subclasificación del suelo, planes urbanísticos complementarios, centralidades, metro, vías proyectadas y amenaza volcánica. Descargadas el 7 de noviembre de 2026.</li>
+          <li><b>Crecimiento observado:</b> población por parroquia de los Censos 2010 y 2022 (INEC), según el Boletín 4 del Instituto de Investigaciones de la Ciudad (2024). Los límites parroquiales salen de la unión de los sectores censales publicados en GeoQuito.</li>
+          <li><b>Distancias:</b> en línea recta desde el centro de cada plan hasta la estación de metro y el aeropuerto más cercanos. “Vía nueva cerca” significa una vía proyectada o con trazado aprobado a menos de 1 km del polígono.</li>
+        </ul>
+        <h2>Límites</h2>
+        <ul>
+          <li>El crecimiento se mide con población, no con imágenes satelitales de superficie construida. Desde este entorno no se pudo acceder a esos datos.</li>
+          <li>La reforma de Cumbayá de diciembre de 2025 puede no estar reflejada en la capa publicada.</li>
+          <li>Las geometrías están simplificadas para web (unos 20–60 m). No sirven para medir linderos.</li>
+          <li>El plan San Juan de Cumbayá cae, según los límites censales, en el borde entre Cumbayá e Itchimbía.</li>
+        </ul>
+        <h2>Fuentes</h2>
+        <ul class="small">
+          <li><a href="https://geoquito.quito.gob.ec/server/rest/services" target="_blank" rel="noopener">GeoQuito: red vial (ap030_via_l), cuencas hidrográficas y licencias industriales</a></li>
+          <li><a href="https://www.primicias.ec/noticias/sociedad/rios-contaminacion-quito-epmaps/" target="_blank" rel="noopener">Primicias: contaminación de los ríos de Quito (Secretaría de Ambiente y EPMAPS, 2023)</a></li>
+          <li><a href="https://www.primicias.ec/noticias/quito/rio-machangara-contaminacion-derechos-municipio/" target="_blank" rel="noopener">Primicias: río Machángara (2024)</a></li>
+          <li><a href="https://dialnet.unirioja.es/descarga/articulo/10255729.pdf" target="_blank" rel="noopener">González Ordóñez (2025): calidad del aire en Quito con datos de la REMMAQ</a></li>
+          <li><a href="https://geoquito.quito.gob.ec/server/rest/services/web_reference_dmot/plan_de_uso_y_gestion_del_suelo_2024/MapServer" target="_blank" rel="noopener">GeoQuito – PUGS 2024 (MapServer)</a></li>
+          <li><a href="https://investigaciones.quito.gob.ec/wp-content/uploads/2024/11/Boletin4-Revelo2024-El-crecimiento-demografico-intercensal-en-Quito.pdf" target="_blank" rel="noopener">Instituto de Investigaciones de la Ciudad – Crecimiento demográfico intercensal 2010–2022</a></li>
+          <li><a href="https://planv.com.ec/historias/ciudades/claves-entender-reformas-al-pugs-y-el-nuevo-marco-urbanistico-quito/" target="_blank" rel="noopener">Plan V – Claves de las reformas al PUGS (2024)</a></li>
+          <li><a href="https://www.expreso.ec/quito/el-concejo-aprobo-una-reforma-al-plan-de-uso-de-suelo-pugs-en-cumbaya-266578.html" target="_blank" rel="noopener">Expreso – Reforma al PUGS en Cumbayá (dic. 2025)</a></li>
+          <li><a href="https://habitat.quito.gob.ec/wp-content/uploads/2025/07/MANUAL-PUGS.pdf" target="_blank" rel="noopener">Secretaría de Hábitat – Manual PUGS</a></li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="assets/leaflet/leaflet.js"></script>
+<script src="data/mapa-data.js"></script>
+<script>
+(function(){
+const D=window.MAPA_DATA;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C={exp:css('--exp'),nocons:css('--nocons'),cons:css('--cons'),transit:css('--transit'),proy:css('--proy'),road:css('--road'),lahar:css('--lahar'),cent:css('--cent'),ink:css('--ink'),line:css('--line'),
+ g:[css('--l2'),css('--l1'),css('--g0'),css('--g1'),css('--g2'),css('--g3'),css('--g4')]};
+const fmt=n=>Math.round(n).toLocaleString('es-EC');
+const fmt1=n=>n.toLocaleString('es-EC',{minimumFractionDigits:1,maximumFractionDigits:1});
+const sgn=n=>(n>0?'+':'')+fmt1(n);
+
+/* ---------- corredores y notas (hechos calculados del PUGS y el censo) ---------- */
+const PAR={}; D.parr.features.forEach(f=>PAR[f.properties.name]=f.properties);
+const CORR=[
+ {id:'tum',name:'Valle de Tumbaco–Cumbayá',plans:['Collaquí','San Juan de Cumbayá']},
+ {id:'chi',name:'Valle de Los Chillos (sur)',plans:['La Betania','Cuendina','La Balvina']},
+ {id:'cal',name:'Norte: Calderón',plans:['Calderón Norte']},
+ {id:'aer',name:'Nororiente: aeropuerto',plans:['Puembo','Pifo','Tababela','Itulcachi']},
+ {id:'mit',name:'Noroccidente: San Antonio',plans:['Capeipi']}
+];
+const NOTE={
+ 'Collaquí':'El polígono de expansión más grande del DMQ. Tumbaco es la cuarta parroquia que más población ganó. Está a 2,7 km del plan especial de protección del Ilaló.',
+ 'San Juan de Cumbayá':'El plan de expansión más cercano al metro y a la meseta. Lo bordean la Perimetral Metropolitana y el Escalón Lumbisí (trazado aprobado).',
+ 'La Betania':'Junto al Ilaló. El 7 % del polígono está en zona de alta probabilidad de lahares del Cotopaxi.',
+ 'Cuendina':'Sobre la vía Conocoto–Amaguaña. Amaguaña también suma 607 ha de suelo urbano no consolidado.',
+ 'La Balvina':'Vecino de Cuendina sobre la vía Conocoto–Amaguaña. La Solución Vial Miranda–Amaguaña, proyectada, pasa a 1,7 km.',
+ 'Calderón Norte':'En la parroquia que más creció del DMQ (+98.146 habitantes). Lo toca la Transversal Oyacoto–San Antonio proyectada.',
+ 'Puembo':'Junto a la Ruta Viva Fase 3 proyectada y a 5,5 km del aeropuerto. Al lado está el plan zonal de Puembo (1.319 ha).',
+ 'Pifo':'Colinda con la zona logística comercial regional, entre la Panamericana y la E35.',
+ 'Tababela':'A 2,5 km del aeropuerto, junto a la zona de desarrollo económico. Tababela tiene además 1.218 ha urbanas no consolidadas, la mayor bolsa del DMQ.',
+ 'Itulcachi':'Pequeño, al pie oriental del Ilaló. Colinda con el polígono industrial de Itulcachi (735 ha).',
+ 'Capeipi':'Coincide con el polígono industrial de San Antonio. Es suelo productivo, no residencial.'
+};
+const plans={}; D.planes.features.forEach(f=>plans[f.properties.nam+'|'+f.properties.tipo_plan]=f);
+const pe=n=>plans[n+'|Plan parcial de expansión urbana'];
+const vname=v=>v.replace(' - EJE VIAL','').replace(/\s*\(.*?\)\s*/g,' ').trim().toLowerCase().replace(/(^|\s|–|-)(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
+
+/* ---------- mapa ---------- */
+const map=L.map('map',{zoomSnap:.25,minZoom:9,maxZoom:16,attributionControl:true,preferCanvas:false});
+map.attributionControl.setPrefix(false).addAttribution('GeoQuito · PUGS 2024 · INEC');
+['parr','cons','exp','plan','road','lab'].forEach((p,i)=>{map.createPane(p).style.zIndex=400+i*10});
+
+function gcol(v){ if(v<-10)return C.g[0]; if(v<0)return C.g[1]; if(v<15)return C.g[2]; if(v<30)return C.g[3]; if(v<45)return C.g[4]; if(v<60)return C.g[5]; return C.g[6]; }
+let base='precio';
+const PRICES={"Amaguaña":{"n":20,"valid":16,"der":0,"ppm":[56.6,70,72.7],"lot_med":3098,"res":{"n":8,"ppm":[62.8,70.4,72.7],"usd":[47875,66500],"m2":914.5,"u60":4,"u100":6},"big":{"n":7,"ppm":70}},"El Quinche":{"n":13,"valid":12,"der":0,"ppm":[38.8,48,67.1],"lot_med":2540,"res":{"n":3,"ppm":[55.7,64.5,69.8],"usd":[25000,35000],"m2":746,"u60":2,"u100":2},"big":{"n":4,"ppm":40.4}},"La Merced":{"n":15,"valid":14,"der":2,"ppm":[38.7,51.5,75],"lot_med":2020,"res":{"n":6,"ppm":[46.8,68.9,130.7],"usd":[36000,70190],"m2":733.5,"u60":2,"u100":5},"big":{"n":4,"ppm":35.6}},"San Antonio":{"n":42,"valid":41,"der":1,"ppm":[46.4,64.2,83.4],"lot_med":2350,"res":{"n":18,"ppm":[53.8,69.7,81.5],"usd":[41154,57500],"m2":1119.5,"u60":10,"u100":14},"big":{"n":6,"ppm":33.6}},"Llano Chico":{"n":31,"valid":27,"der":1,"ppm":[94.8,129.5,137.3],"lot_med":1335,"res":{"n":18,"ppm":[129.2,132.5,147.7],"usd":[135000,158412],"m2":1122.5,"u60":1,"u100":2},"big":{"n":3,"ppm":53.9}},"Pomasqui":{"n":41,"valid":41,"der":1,"ppm":[101.4,145.1,183.8],"lot_med":1009.5,"res":{"n":23,"ppm":[147.6,167.7,235.4],"usd":[58162.5,89900],"m2":533,"u60":7,"u100":15},"big":{"n":11,"ppm":100}},"Alangasí":{"n":51,"valid":51,"der":3,"ppm":[40,66.7,107.4],"lot_med":1988,"res":{"n":26,"ppm":[55.3,92.7,120],"usd":[55000,85500],"m2":1084.5,"u60":10,"u100":18},"big":{"n":6,"ppm":52.2}},"Checa":{"n":61,"valid":57,"der":5,"ppm":[42,58.9,86.1],"lot_med":8538,"res":{"n":11,"ppm":[92.5,215,216],"usd":[85304,245560],"m2":1259,"u60":2,"u100":3},"big":{"n":34,"ppm":55}},"Yaruquí":{"n":61,"valid":60,"der":6,"ppm":[40,58.6,78.9],"lot_med":20000,"res":{"n":5,"ppm":[68.8,69,143.6],"usd":[69000,70000],"m2":975,"u60":1,"u100":4},"big":{"n":43,"ppm":58}},"Tababela":{"n":94,"valid":91,"der":0,"ppm":[60.9,78,150],"lot_med":10661,"res":{"n":15,"ppm":[150,248.3,250.4],"usd":[153028.5,162978],"m2":770,"u60":0,"u100":0},"big":{"n":70,"ppm":75}},"Calderón":{"n":130,"valid":125,"der":6,"ppm":[84.9,112.5,168.7],"lot_med":1945,"res":{"n":58,"ppm":[88.1,120.5,169.3],"usd":[48000,81950],"m2":852,"u60":25,"u100":32},"big":{"n":24,"ppm":98.5}},"Pifo":{"n":126,"valid":120,"der":7,"ppm":[72.8,114.3,142.9],"lot_med":5958,"res":{"n":20,"ppm":[110,132.9,151.8],"usd":[49499.3,107000],"m2":996,"u60":7,"u100":10},"big":{"n":60,"ppm":105}},"Conocoto":{"n":124,"valid":123,"der":4,"ppm":[73.7,100,148],"lot_med":1172,"res":{"n":68,"ppm":[76.7,113.4,156.8],"usd":[44250,67000],"m2":760.5,"u60":31,"u100":51},"big":{"n":19,"ppm":88}},"Guayllabamba":{"n":127,"valid":123,"der":11,"ppm":[37.9,55,78.1],"lot_med":2000,"res":{"n":57,"ppm":[42.7,60,83.3],"usd":[36000,55000],"m2":1000,"u60":29,"u100":43},"big":{"n":36,"ppm":35}},"Cumbayá":{"n":331,"valid":324,"der":6,"ppm":[280.1,352.9,429.6],"lot_med":1244,"res":{"n":240,"ppm":[300,369.8,431],"usd":[285000,391100],"m2":1100,"u60":4,"u100":4},"big":{"n":34,"ppm":269.4}},"Puembo":{"n":534,"valid":514,"der":2,"ppm":[177.7,239.9,282.2],"lot_med":1127.5,"res":{"n":358,"ppm":[224.3,260,300],"usd":[165445,210000],"m2":900,"u60":1,"u100":4},"big":{"n":73,"ppm":121.2}},"Tumbaco":{"n":588,"valid":569,"der":15,"ppm":[155,200,250],"lot_med":2013.5,"res":{"n":276,"ppm":[195.5,225,285.6],"usd":[179750,225500],"m2":1045,"u60":3,"u100":15},"big":{"n":116,"ppm":150}}};
+const RISK={"Alangasí":{"lahar_urb":28.2,"ext_ha":0,"ext_km":1.5,"vnew_km":1.7,"metro_km":9.8},"Amaguaña":{"lahar_urb":0.0,"ext_ha":0,"ext_km":5.4,"vnew_km":8.4,"metro_km":13.0},"Calderón":{"lahar_urb":0.0,"ext_ha":216,"ext_km":0.0,"vnew_km":18.3,"metro_km":13.0},"Conocoto":{"lahar_urb":2.4,"ext_ha":0,"ext_km":0.0,"vnew_km":25.7,"metro_km":4.4},"Cumbayá":{"lahar_urb":3.8,"ext_ha":0,"ext_km":0.0,"vnew_km":14.5,"metro_km":4.3},"Checa":{"lahar_urb":0.0,"ext_ha":0,"ext_km":0.1,"vnew_km":2.5,"metro_km":24.8},"El Quinche":{"lahar_urb":0.0,"ext_ha":4,"ext_km":0.0,"vnew_km":8.9,"metro_km":24.0},"Guayllabamba":{"lahar_urb":0.0,"ext_ha":60,"ext_km":0.0,"vnew_km":0.0,"metro_km":21.7},"La Merced":{"lahar_urb":0.0,"ext_ha":0,"ext_km":2.9,"vnew_km":0.7,"metro_km":13.7},"Llano Chico":{"lahar_urb":0.0,"ext_ha":0,"ext_km":3.1,"vnew_km":4.4,"metro_km":5.1},"Pifo":{"lahar_urb":0.0,"ext_ha":218,"ext_km":0.0,"vnew_km":6.1,"metro_km":26.1},"Pomasqui":{"lahar_urb":0.0,"ext_ha":35,"ext_km":0.0,"vnew_km":0.0,"metro_km":11.9},"Puembo":{"lahar_urb":0.0,"ext_ha":7,"ext_km":0.0,"vnew_km":24.7,"metro_km":13.7},"San Antonio":{"lahar_urb":0.0,"ext_ha":794,"ext_km":0.0,"vnew_km":7.3,"metro_km":22.4},"Tababela":{"lahar_urb":0.0,"ext_ha":1,"ext_km":0.0,"vnew_km":10.8,"metro_km":14.9},"Tumbaco":{"lahar_urb":3.8,"ext_ha":17,"ext_km":0.0,"vnew_km":0.0,"metro_km":8.6},"Yaruquí":{"lahar_urb":0.0,"ext_ha":20,"ext_km":0.0,"vnew_km":9.8,"metro_km":17.1}};
+const PCOL=['#FFF1D6','#F9CF8B','#EE9F52','#D2691E','#A0410D','#6B2A08'];
+function pcol(v){return v<75?PCOL[0]:v<110?PCOL[1]:v<150?PCOL[2]:v<220?PCOL[3]:v<300?PCOL[4]:PCOL[5];}
+const resPpm=n=>{const p=PRICES[n]; if(!p)return null; return p.res.n>=8?p.res.ppm[1]:null;};
+const parr=L.geoJSON(D.parr,{pane:'parr',style:f=>parStyle(f),onEachFeature:(f,l)=>{
+  const p=f.properties;
+  l.bindTooltip(`<b>${p.name}</b> <span class="small">${p.urbana?'urbana':'rural'}</span><br>Población: <span class="m">${fmt(p.p2010)} → ${fmt(p.p2022)}</span><br>Cambio 2010–22: <span class="m">${sgn(p.var)} %</span> (${p.dpob>0?'+':''}${fmt(p.dpob)})<br>Expansión PUGS: <span class="m">${fmt(p.exp_ha)} ha</span> · No consolidado: <span class="m">${fmt(p.nocons_ha)} ha</span>${PRICES[p.name]?`<br>Lote residencial: <span class="m">${PRICES[p.name].res.n>=8?'USD '+fmt(PRICES[p.name].res.ppm[1])+'/m²':'pocos datos'}</span> (${PRICES[p.name].res.n} lotes)`:''}`,{className:'tt',sticky:true});
+}}).addTo(map);
+function parStyle(f){ const p=f.properties;
+  if(base==='pugs'||base==='calma') return {color:'#8D979E',weight:p.urbana?.5:1,fillColor:'#FBFBFA',fillOpacity:1};
+  if(base==='precio'){ const v=resPpm(p.name), pr=PRICES[p.name]; return {color:'#8D979E',weight:p.urbana?.4:1,fillColor:v!=null?pcol(v):(pr?'#E4E1DA':'#FBFBFA'),fillOpacity:1}; }
+  return {color:'#fff',weight:p.urbana?.6:1,fillColor:gcol(p.var),fillOpacity:.95}; }
+
+const soil={};
+D.suelo.features.forEach(f=>{ const c=f.properties.cat;
+  soil[c]=L.geoJSON(f,{pane:c==='exp'?'exp':'cons',interactive:false,style:()=>soilStyle(c)}); });
+function soilStyle(c){
+  if(base==='pugs') return c==='exp'?{stroke:false,fillColor:C.exp,fillOpacity:.85}:c==='nocons'?{stroke:false,fillColor:C.nocons,fillOpacity:.75}:{stroke:false,fillColor:C.cons,fillOpacity:.8};
+  return c==='exp'?{color:C.exp,weight:2,fillColor:C.exp,fillOpacity:.25}:c==='nocons'?{color:'#9A6A00',weight:.8,dashArray:'2 3',fill:false}:{stroke:false,fill:false};
+}
+const planLayer=L.geoJSON(D.planes,{pane:'plan',style:f=>planStyle(f),onEachFeature:(f,l)=>{
+  const p=f.properties;
+  l.bindTooltip(`<b>${p.nam}</b><br>${p.tipo_plan} · <span class="m">${fmt1(p.superf_ha)} ha</span>`,{className:'tt',sticky:true});
+  if(p.tipo_plan.startsWith('Plan parcial de expansión')) l.on('click',()=>select(p.nam,false));
+}});
+function planStyle(f,on){ const t=f.properties.tipo_plan;
+  if(t.startsWith('Plan parcial de expansión')) return {color:on?C.ink:C.exp,weight:on?3.5:1.6,fillOpacity:0.01,fillColor:C.exp};
+  if(t==='Plan especial') return {color:C.cent,weight:1.2,dashArray:'6 4',fill:false};
+  return {color:'#55606A',weight:1,dashArray:'3 3',fill:false};
+}
+const cent=L.geoJSON(D.cent,{pane:'plan',style:{color:C.cent,weight:1.6,fillColor:C.cent,fillOpacity:.12},onEachFeature:(f,l)=>l.bindTooltip(`<b>Centralidad ${f.properties.nam}</b><br>${f.properties.jerarquia}`,{className:'tt',sticky:true})});
+const roads=L.geoJSON(D.vias,{pane:'road',interactive:false,style:f=>({color:C.road,weight:f.properties.typ==='Autopista'?2.2:1,opacity:.85})});
+const vproy=L.geoJSON(D.vproy,{pane:'road',style:f=>({color:C.proy,weight:f.properties.est==='Trazado aprobado'?3.2:2.2,dashArray:f.properties.est==='Trazado aprobado'?null:'5 4',opacity:.95}),
+  onEachFeature:(f,l)=>{ if(f.properties.nam) l.bindTooltip(`<b>${vname(f.properties.nam)}</b><br>Vía ${f.properties.est.toLowerCase()}`,{className:'tt',sticky:true}); }});
+const metro=L.layerGroup([
+  L.geoJSON(D.metro,{pane:'road',interactive:false,style:{color:C.transit,weight:3.5}}),
+  L.geoJSON(D.est,{pane:'road',pointToLayer:(f,ll)=>L.circleMarker(ll,{pane:'road',radius:4,color:'#fff',weight:1.5,fillColor:C.transit,fillOpacity:1}),
+    onEachFeature:(f,l)=>l.bindTooltip('Metro · '+f.properties.nam,{className:'tt'})}),
+  L.geoJSON(D.aero,{pane:'road',pointToLayer:(f,ll)=>L.circleMarker(ll,{pane:'road',radius:7,color:C.ink,weight:2,fillColor:'#fff',fillOpacity:1}),
+    onEachFeature:(f,l)=>l.bindTooltip(f.properties.nam,{className:'tt',permanent:false})})
+]);
+const GCOL=['#1A7F4B','#79B66E','#E4DE96','#F2A65A','#D2492F','#86211A'];
+const gc=s=>s<=10?GCOL[0]:s<=25?GCOL[1]:s<=40?GCOL[2]:s<=60?GCOL[3]:s<=80?GCOL[4]:GCOL[5];
+const cvs=L.canvas({pane:'cons',padding:.3});
+const grid=L.layerGroup(D.grid.map(c=>{const r=L.rectangle([[c[0]-.00135,c[1]-.00135],[c[0]+.00135,c[1]+.00135]],{renderer:cvs,stroke:false,fillColor:gc(c[2]),fillOpacity:.82});
+  r.bindTooltip(()=>`<b>Exposición ${c[2]}</b> / 100<br>Tráfico <span class="m">${c[3]} %</span> · Industria <span class="m">${c[4]} %</span> · Ríos <span class="m">${c[5]} %</span>${c[6]?'<br>A menos de 4 km del aeropuerto':''}`,{className:'tt',sticky:true}); return r;}));
+const traf=L.geoJSON(D.vtraf,{pane:'road',interactive:false,style:f=>({color:'#B23A2A',weight:f.properties.catg_via==='Expresa'?3:1.6,opacity:.85})});
+const indL=L.layerGroup([
+  L.geoJSON(D.indz,{pane:'plan',interactive:false,style:{color:'#5B2A91',weight:1,fillColor:'#6D3FA0',fillOpacity:.35}}),
+  L.geoJSON(D.ext,{pane:'plan',interactive:false,style:{color:'#5A4632',weight:1,dashArray:'3 3',fillColor:'#8C7356',fillOpacity:.35}}),
+  L.geoJSON(D.lic,{pane:'road',pointToLayer:(f,ll)=>L.circleMarker(ll,{pane:'road',radius:3,color:'#fff',weight:1,fillColor:'#5B2A91',fillOpacity:1}),onEachFeature:(f,l)=>l.bindTooltip(`<b>${f.properties.NOMBRE_COM||'Industria'}</b><br>${(f.properties.DESCRIPCIO||'').toLowerCase()}`,{className:'tt'})})]);
+const rios=L.geoJSON(D.riop,{pane:'road',style:{color:'#7A5A2A',weight:4,opacity:.8,fillColor:'#7A5A2A',fillOpacity:.5},onEachFeature:(f,l)=>l.bindTooltip(`<b>${f.properties.nam}</b><br>Río contaminado (Secretaría de Ambiente)`,{className:'tt',sticky:true})});
+const aero4=L.circle(D.aero.features[0].geometry.coordinates.slice().reverse(),{radius:4000,pane:'road',interactive:false,color:C.ink,weight:1.2,dashArray:'6 5',fill:false});
+const lahar=L.geoJSON(D.lahar,{pane:'exp',interactive:false,style:{color:C.lahar,weight:1,fillColor:C.lahar,fillOpacity:.32}});
+/* ---------- terrenos en venta (puntos) ---------- */
+const LOTS=D.lots||[];
+const SOILN={cons:'urbano consolidado',nocons:'urbano no consolidado',exp:'expansión urbana',rural:'rural'};
+const lotF={max:1e9,res:false,calm:false,apx:false};
+const lotLayer=L.layerGroup();
+const lotCvs=L.canvas({pane:'lab',padding:.3});
+function lotPopup(p){ const ppm=p.usd/p.m2;
+  return `<b>${p.tit||'Terreno'}</b><br><span class="m">USD ${fmt(p.usd)}</span> · <span class="m">${fmt(p.m2)} m²</span> · <span class="m">USD ${fmt(ppm)}/m²</span><br>${p.par} · suelo ${SOILN[p.soil]||'sin dato'}${p.ex!=null?` · exposición ${p.ex}/100`:''}${p.lh?'<br><span style="color:#9A3412;font-weight:600">En zona de lahares del Cotopaxi</span>':''}${p.apx?'<br><span class="small">Ubicación aproximada: el anuncio usa un punto genérico de la parroquia</span>':''}<br><a href="https://www.plusvalia.com${p.url}" target="_blank" rel="noopener">Ver anuncio en Plusvalía</a>`; }
+function drawLots(){ lotLayer.clearLayers(); let n=0;
+  LOTS.forEach(p=>{ if(!p.lat||!p.usd||!p.m2) return; if(p.usd>lotF.max) return; if(lotF.res&&(p.m2<200||p.m2>2000)) return; if(lotF.calm&&!(p.ex!=null&&p.ex<=25)) return; if(p.apx&&!lotF.apx) return;
+    const ppm=p.usd/p.m2; n++;
+    L.circleMarker([p.lat,p.lng],{renderer:lotCvs,radius:p.m2>5000?6:4.5,color:'#13202A',weight:p.apx?0.6:1.2,dashArray:null,fillColor:pcol(ppm),fillOpacity:p.apx?.55:.95}).bindPopup(lotPopup(p),{maxWidth:280}).addTo(lotLayer); });
+  const el=document.getElementById('lotn'); if(el) el.textContent=fmt(n); }
+drawLots();
+
+
+/* etiquetas */
+const labs=L.layerGroup(), xlabs=L.layerGroup();
+D.parr.features.forEach(f=>{const p=f.properties; L.marker(p.lab,{pane:'lab',interactive:false,icon:L.divIcon({className:'',html:`<div class="plab ${p.urbana?'u':''}" data-u="${p.urbana?1:0}" style="transform:translate(-50%,-50%)">${p.name}</div>`,iconSize:null})}).addTo(labs);});
+CORR.forEach(c=>c.plans.forEach(n=>{const f=pe(n); if(!f)return; const b=L.geoJSON(f).getBounds(); L.marker([b.getNorth(),b.getCenter().lng],{pane:'lab',interactive:false,icon:L.divIcon({className:'',html:`<div class="xlab" style="transform:translate(-50%,-115%)">${n}</div>`,iconSize:null})}).addTo(xlabs);}));
+function labVis(){ const z=map.getZoom(); document.querySelectorAll('.plab').forEach(e=>{e.style.display=(e.dataset.u==='1'?z>=12.5:z>=10.75)?'':'none'}); document.querySelectorAll('.xlab').forEach(e=>{e.style.display=z>=11.25?'':'none'}); }
+map.on('zoomend',labVis);
+
+/* controles */
+const LAY={roads:{l:roads,on:true,t:'Vías principales',k:`<span class="ln" style="border-color:${C.road}"></span>`},
+ vproy:{l:vproy,on:true,t:'Vías nuevas (proyectadas / trazado aprobado)',k:`<span class="ln" style="border-color:${C.proy};border-top-style:dashed"></span>`},
+ metro:{l:metro,on:true,t:'Metro y aeropuerto',k:`<span class="ln" style="border-color:${C.transit}"></span>`},
+ plan:{l:planLayer,on:true,t:'Planes urbanísticos',k:`<span class="sw" style="background:transparent;border:2px solid ${C.exp}"></span>`},
+ cent:{l:cent,on:false,t:'Centralidades',k:`<span class="sw" style="background:${C.cent}33;border-color:${C.cent}"></span>`},
+ lots:{l:lotLayer,on:true,t:'Terrenos en venta (Plusvalía)',k:'<span class="sw" style="border-radius:50%;width:11px;height:11px;background:#EE9F52;border-color:#13202A"></span>'},
+ lahar:{l:lahar,on:false,t:'Lahares Cotopaxi',k:`<span class="sw" style="background:${C.lahar}55;border-color:${C.lahar}"></span>`},
+ traf:{l:traf,on:false,t:'Vías de alto tráfico',k:'<span class="ln" style="border-color:#B23A2A"></span>'},
+ ind:{l:indL,on:false,t:'Industria y canteras',k:'<span class="sw" style="background:#6D3FA055;border-color:#5B2A91"></span>'},
+ rios:{l:rios,on:false,t:'Ríos contaminados',k:'<span class="ln" style="border-color:#7A5A2A"></span>'},
+ aero4:{l:aero4,on:false,t:'Radio de 4 km del aeropuerto',k:'<span class="ln" style="border-color:#13202A;border-top-style:dashed;border-top-width:2px"></span>'},
+ labs:{l:L.layerGroup([labs,xlabs]),on:true,t:'Nombres',k:''}};
+const Ctl=L.Control.extend({options:{position:'topright'},onAdd(){
+  const d=L.DomUtil.create('div','ctl'); L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+  d.innerHTML=`<button class="toggle" id="ctog" aria-expanded="false">Capas y leyenda ▾</button><div class="body" id="cbody">
+   <div class="lbl">Fondo</div>
+   <div class="seg" id="bseg"><button aria-pressed="false" data-b="pugs">PUGS</button><button aria-pressed="false" data-b="censo">Censo</button><button aria-pressed="false" data-b="precio">Precio m²</button><button aria-pressed="false" data-b="calma">Contaminación</button></div>
+   <div class="legend" id="leg"></div>
+   <div class="lbl" style="margin-top:8px">Capas</div>
+   ${Object.entries(LAY).map(([k,o])=>`<label><input type="checkbox" id="ly-${k}" ${o.on?'checked':''}>${o.k}<span>${o.t}</span></label>`).join('')}
+  </div>`;
+  return d;}});
+map.addControl(new Ctl());
+L.control.scale({imperial:false,position:'bottomleft'}).addTo(map);
+function legend(){ const el=document.getElementById('leg');
+  if(base==='pugs') el.innerHTML=`<div><span class="sw" style="background:${C.exp}"></span>Expansión urbana (rural)</div><div><span class="sw" style="background:${C.nocons}"></span>Urbano no consolidado</div><div><span class="sw" style="background:${C.cons}"></span>Urbano consolidado</div>`;
+  else if(base==='calma') el.innerHTML=`<div class="small">Exposición a tráfico, industria y ríos contaminados (cuadros de 300 m)</div><div class="ramp">${GCOL.map(c=>`<i style="background:${c}"></i>`).join('')}</div><div class="rampl"><span>tranquilo</span><span>40</span><span>expuesto</span></div>`;
+  else if(base==='precio') el.innerHTML=`<div class="small">Lote residencial (200–2.000 m²): mediana USD/m² en Plusvalía</div><div class="ramp">${PCOL.map(c=>`<i style="background:${c}"></i>`).join('')}</div><div class="rampl"><span>75</span><span>110</span><span>150</span><span>220</span><span>300</span></div><div style="margin-top:4px"><span class="sw" style="background:#E4E1DA"></span>Pocos lotes (menos de 8)</div><div><span class="sw" style="background:#FBFBFA"></span>Sin datos</div>`;
+  else el.innerHTML=`<div class="small">Cambio de población 2010–2022</div><div class="ramp">${C.g.map(c=>`<i style="background:${c}"></i>`).join('')}</div><div class="rampl"><span>-10</span><span>0</span><span>15</span><span>30</span><span>45</span><span>60 %</span></div><div style="margin-top:4px"><span class="sw" style="background:${C.exp}40;border:2px solid ${C.exp}"></span>Expansión urbana PUGS</div>`; }
+function setBase(b){ base=b; parr.setStyle(parStyle); Object.entries(soil).forEach(([c,l])=>{l.setStyle(soilStyle(c)); if((b!=='pugs'&&c==='cons')||(b==='calma'&&c==='nocons')){map.removeLayer(l)}else if(!map.hasLayer(l)) l.addTo(map);});
+  if(b==='calma'){ grid.addTo(map); ['traf','ind','rios','aero4'].forEach(k=>{LAY[k].l.addTo(map); const cbx=document.getElementById('ly-'+k); if(cbx) cbx.checked=true;}); ['roads','vproy'].forEach(k=>{map.removeLayer(LAY[k].l); const cbx=document.getElementById('ly-'+k); if(cbx) cbx.checked=false;}); }
+  else map.removeLayer(grid);
+  document.querySelectorAll('#bseg button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.b===b)); legend(); }
+Object.values(soil).forEach(l=>l.addTo(map));
+Object.entries(LAY).forEach(([k,o])=>{ if(o.on) o.l.addTo(map);
+  document.getElementById('ly-'+k).addEventListener('change',e=>{ e.target.checked?o.l.addTo(map):map.removeLayer(o.l); if(k==='labs') setTimeout(labVis); }); });
+document.getElementById('bseg').addEventListener('click',e=>{const b=e.target.closest('button'); if(b) setBase(b.dataset.b);});
+const tog=document.getElementById('ctog'), cb=document.getElementById('cbody');
+if(matchMedia('(max-width:900px)').matches){cb.hidden=true;}
+tog.addEventListener('click',()=>{cb.hidden=!cb.hidden; tog.setAttribute('aria-expanded',!cb.hidden);});
+setBase(base);
+map.fitBounds(soil.exp.getBounds().pad(0.08));
+labVis();
+
+/* ---------- panel: zonas ---------- */
+const pz=document.getElementById('p-z');
+let html=`<p class="small" style="margin:0 0 4px">Polígonos de <b style="color:var(--exp)">suelo rural de expansión urbana</b> del PUGS 2024, agrupados por corredor. Toca uno para verlo en el mapa.</p>`;
+CORR.forEach(c=>{ const fs=c.plans.map(pe).filter(Boolean); const ha=fs.reduce((s,f)=>s+f.properties.superf_ha,0);
+  html+=`<div class="corr"><h2>${c.name}</h2><span class="n">${fmt(ha)} ha</span></div><div class="cards">`;
+  fs.forEach(f=>{const p=f.properties; const pr=PAR[p.parroquia.split(' / ')[0]]||PAR[p.parroquia];
+    const vias=(p.vias||[]).filter(v=>!/^S\/N/.test(v)&&!/^(COTOPAXI|QUITO|DE LOS VERGELES|PARALELA A TABACARSÉN)$/.test(v)).map(vname);
+    html+=`<div class="card" tabindex="0" role="button" data-n="${p.nam}"><h3>${p.nam}</h3><span class="ha">${fmt1(p.superf_ha)} ha</span>
+      <span class="meta">${p.parroquia}${pr?` · parroquia ${fmt(pr.p2022)} hab. en 2022`:''}</span>
+      <span class="chips">${pr?`<span class="chip g">${sgn(pr.var)} % población</span>`:''}<span class="chip i">Aeropuerto ${fmt1(p.aero_km)} km</span><span class="chip i">Metro ${fmt1(p.metro_km)} km</span>${vias.slice(0,2).map(v=>`<span class="chip v">${v}</span>`).join('')}${p.lahar_pct>0?`<span class="chip w">${fmt1(p.lahar_pct)} % en zona de lahares</span>`:''}</span>
+      <p>${NOTE[p.nam]||''}</p></div>`;});
+  html+='</div>'; });
+html+=`<p class="small" style="margin-top:14px">Suma de los 11 planes: 3.035 ha. La capa de subclasificación del suelo da 3.103 ha de expansión urbana en total.</p>`;
+pz.innerHTML=html;
+let selLayer=null;
+function select(n,fly=true){
+  document.querySelectorAll('.card').forEach(c=>c.classList.toggle('on',c.dataset.n===n));
+  if(selLayer) planLayer.resetStyle(selLayer);
+  planLayer.eachLayer(l=>{ if(l.feature.properties.nam===n&&l.feature.properties.tipo_plan.startsWith('Plan parcial de expansión')){selLayer=l; l.setStyle(planStyle(l.feature,true)); if(!map.hasLayer(planLayer)){planLayer.addTo(map);document.getElementById('ly-plan').checked=true;}
+    if(fly) map.flyToBounds(l.getBounds().pad(.6),{duration:.6,maxZoom:14}); }});
+  if(!fly){ showTab('z'); const c=document.querySelector(`.card[data-n="${n}"]`); c&&c.scrollIntoView({block:'nearest',behavior:'smooth'}); }
+}
+pz.addEventListener('click',e=>{const c=e.target.closest('.card'); if(c) select(c.dataset.n);});
+pz.addEventListener('keydown',e=>{const c=e.target.closest('.card'); if(c&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(c.dataset.n);}});
+
+/* ---------- panel: parroquias ---------- */
+const COLS=[['name','Parroquia'],['p2022','Pob. 2022'],['dpob','Δ hab.'],['var','Δ %'],['exp_ha','Exp. ha'],['nocons_ha','No cons. ha']];
+let sortK='dpob',sortD=-1,filt='all';
+const tb=document.querySelector('#tbl tbody'), th=document.querySelector('#tbl thead');
+function drawT(){
+  th.innerHTML='<tr>'+COLS.map(([k,t])=>`<th><button data-k="${k}" ${k===sortK?'data-on':''}>${t}${k===sortK?(sortD<0?' ↓':' ↑'):''}</button></th>`).join('')+'</tr>';
+  const rows=Object.values(PAR).filter(p=>filt==='all'||(filt==='u')===p.urbana).sort((a,b)=>(a[sortK]>b[sortK]?1:a[sortK]<b[sortK]?-1:0)*sortD);
+  tb.innerHTML=rows.map(p=>`<tr class="${p.urbana?'':'r'}" data-n="${p.name}"><td>${p.name}</td><td>${fmt(p.p2022)}</td><td class="${p.dpob<0?'neg':'pos'}">${p.dpob>0?'+':''}${fmt(p.dpob)}</td><td class="${p.var<0?'neg':'pos'}">${sgn(p.var)}</td><td>${p.exp_ha>=1?fmt(p.exp_ha):'–'}</td><td>${p.nocons_ha>=1?fmt(p.nocons_ha):'–'}</td></tr>`).join('');
+}
+th.addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return; const k=b.dataset.k; if(k===sortK) sortD=-sortD; else {sortK=k; sortD=k==='name'?1:-1;} drawT();});
+document.getElementById('pf').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return; filt=b.dataset.f; document.querySelectorAll('#pf button').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawT();});
+tb.addEventListener('click',e=>{const r=e.target.closest('tr'); if(!r)return; parr.eachLayer(l=>{ if(l.feature.properties.name===r.dataset.n){ map.flyToBounds(l.getBounds(),{duration:.6,maxZoom:14}); l.openTooltip(l.getBounds().getCenter()); }});
+  if(matchMedia('(max-width:900px)').matches) document.getElementById('map').scrollIntoView({behavior:'smooth'}); });
+drawT();
+
+/* ---------- panel: terrenos ---------- */
+const pt=document.getElementById('p-t');
+const CAND=[
+ {n:'Calderón',why:'La parroquia que más creció en el DMQ. Tiene el plan de expansión Calderón Norte y 18 km de vías nuevas previstas. Hay 58 lotes residenciales publicados, 25 de ellos por USD 60.000 o menos.',risk:'Dentro de la parroquia hay 216 ha de canteras. Revisa bien el barrio: algunos sectores nacieron como asentamientos informales.'},
+ {n:'Conocoto',why:'Creció 55 % y es la parroquia con más vías nuevas previstas (26 km). Es la opción barata más cerca de la ciudad, a unos 4 km del metro. Hay 68 lotes residenciales publicados, 31 por USD 60.000 o menos.',risk:'El 2 % de su suelo urbano está en zona de lahares del Cotopaxi. Confirma que el lote quede fuera.'},
+ {n:'San Antonio',why:'Creció 54 % y tiene 685 ha urbanas todavía sin ocupar. Un lote típico tiene unos 1.100 m² y cuesta cerca de USD 57.500.',risk:'La parroquia tiene 794 ha de canteras, con polvo y tráfico pesado. Está lejos del resto de la ciudad.'},
+ {n:'Amaguaña',why:'Junta 708 ha de expansión (planes Cuendina y La Balvina) y 607 ha no consolidadas. Tiene proyectada la Solución Vial Miranda–Amaguaña.',risk:'Es un mercado pequeño: solo hay 20 terrenos publicados. El precio de referencia es menos confiable y revender puede tomar tiempo.'},
+ {n:'Guayllabamba',why:'Es el terreno residencial más barato con buena oferta: 57 lotes, mediana USD 60/m², 29 de ellos por USD 60.000 o menos. El clima es más cálido.',risk:'Creció menos (27 %) y el PUGS no prevé vías nuevas dentro de la parroquia.'},
+ {n:'Alangasí',why:'Creció 43 % y tiene el plan de expansión La Betania. El precio es intermedio, USD 93/m².',risk:'El 28 % de su suelo urbano está en zona de lahares del Cotopaxi. Es el riesgo más alto de esta lista.'}
+];
+const EXP=['Cumbayá','Puembo','Tababela','Tumbaco','Pomasqui','Pifo','Llano Chico'];
+const FEW=['El Quinche','La Merced','Yaruquí','Checa'];
+function scatter(){
+  const W=380,H=262,m={l:38,r:10,t:24,b:34}, xs=v=>m.l+(Math.min(v,400)/400)*(W-m.l-m.r), ys=v=>H-m.b-((v-20)/50)*(H-m.t-m.b);
+  const pts=Object.keys(PRICES).filter(n=>PRICES[n].res.n>=8&&PAR[n]).map(n=>({n,x:PRICES[n].res.ppm[1],y:PAR[n].var,r:3+Math.sqrt(PAR[n].nocons_ha+PAR[n].exp_ha)/4,c:CAND.some(c=>c.n===n)}));
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Precio del terreno frente al crecimiento de población por parroquia" style="max-width:100%;display:block">`;
+  s+=`<rect x="${xs(0)}" y="${ys(70)}" width="${xs(120)-xs(0)}" height="${ys(35)-ys(70)}" fill="${C.g[3]}" opacity=".45"/><text x="${xs(0)}" y="12" font-size="10.5" fill="${C.g[6]}" font-weight="600">■ Zona verde: más barato y creciendo más</text>`;
+  [0,100,200,300,400].forEach(v=>{s+=`<line x1="${xs(v)}" x2="${xs(v)}" y1="${ys(20)}" y2="${ys(70)}" stroke="${C.line}" stroke-width=".6"/><text x="${xs(v)}" y="${H-m.b+13}" font-size="10" text-anchor="middle" fill="#4F5C66" font-family="IBM Plex Mono,monospace">${v}</text>`;});
+  [20,30,40,50,60,70].forEach(v=>{s+=`<line x1="${xs(0)}" x2="${xs(400)}" y1="${ys(v)}" y2="${ys(v)}" stroke="${C.line}" stroke-width=".6"/><text x="${m.l-5}" y="${ys(v)+3}" font-size="10" text-anchor="end" fill="#4F5C66" font-family="IBM Plex Mono,monospace">${v}%</text>`;});
+  s+=`<text x="${(W+m.l)/2}" y="${H-4}" font-size="10.5" text-anchor="middle" fill="#4F5C66">USD por m², lote residencial (mediana)</text>`;
+  pts.sort((a,b)=>b.r-a.r).forEach(p=>{s+=`<circle cx="${xs(p.x)}" cy="${ys(p.y)}" r="${p.r}" fill="${p.c?C.exp:'#fff'}" fill-opacity="${p.c?.85:1}" stroke="${p.c?C.exp:C.ink}" stroke-width="1.2"/>`;});
+  const off={'Conocoto':[1,12],'Calderón':[-1,-4],'San Antonio':[0,-15],'Alangasí':[1,-4],'Amaguaña':[-1,4],'Guayllabamba':[0,17],'Llano Chico':[1,-8],'Pifo':[1,12],'Tumbaco':[1,-8],'Puembo':[1,4],'Cumbayá':[-1,-10],'Tababela':[1,12],'Pomasqui':[0,17],'Checa':[1,10]};
+  pts.forEach(p=>{const o=off[p.n]||[1,4]; const dx=o[0]*(p.r+3); s+=`<text x="${xs(p.x)+dx}" y="${ys(p.y)+o[1]}" font-size="10.5" ${o[0]<0?'text-anchor="end"':o[0]===0?'text-anchor="middle"':''} fill="${C.ink}" font-weight="${p.c?600:400}" style="paint-order:stroke;stroke:#fff;stroke-width:3px">${p.n}</text>`;});
+  return s+'</svg>';
+}
+(function(){
+  const nAll=Object.values(PRICES).reduce((s,p)=>s+p.n,0);
+  let h=`<p class="small" style="margin:0 0 8px">Precios de oferta de terrenos en Plusvalía al 7 de noviembre de 2026: ${fmt(nAll)} anuncios en ${Object.keys(PRICES).length} parroquias. Un <b>lote residencial</b> aquí es un terreno de 200 a 2.000 m².</p>`;
+  h+=`<div class="lotf"><div class="lbl">Terrenos en el mapa: <span id="lotn">0</span></div>
+   <label for="lotmax">Precio máximo</label> <select id="lotmax"><option value="1e9">Sin límite</option><option value="40000">USD 40.000</option><option value="60000">USD 60.000</option><option value="80000">USD 80.000</option><option value="100000">USD 100.000</option><option value="150000">USD 150.000</option></select>
+   <label><input type="checkbox" id="lotres"> Solo lotes de 200 a 2.000 m²</label>
+   <label><input type="checkbox" id="lotcalm"> Solo sectores tranquilos (exposición 25 o menos)</label>
+   <label><input type="checkbox" id="lotapx"> Incluir anuncios con ubicación aproximada</label>
+   <p class="small" style="margin:4px 0 0">Cada punto es un anuncio, coloreado por USD/m² con la misma escala del fondo "Precio m²". Tócalo para ver el detalle y el enlace. Unos 600 anuncios usan un punto genérico de la parroquia en vez de la ubicación real; por eso están ocultos por defecto y se ven pálidos al activarlos.</p></div>`;
+  h+=`<div class="lbl">Precio frente a crecimiento</div>${scatter()}<p class="small" style="margin:2px 0 0">Cada círculo es una parroquia con al menos 8 lotes publicados. El tamaño indica las hectáreas de suelo no consolidado más las de expansión. En naranja, las candidatas.</p>`;
+  h+=`<div class="corr"><h2>Candidatas: baratas hoy y con señales de crecimiento</h2></div><div class="cards">`;
+  CAND.forEach(c=>{const p=PRICES[c.n], a=PAR[c.n], r=RISK[c.n];
+    h+=`<div class="card cand" tabindex="0" role="button" data-p="${c.n}"><h3>${c.n}</h3><span class="ha">USD ${fmt(p.res.ppm[1])}/m²</span>
+    <span class="meta">Lote típico ${fmt(p.res.m2)} m² · precio mediano USD ${fmt(p.res.usd[1])} · ${p.res.n} lotes publicados</span>
+    <span class="chips"><span class="chip g">${sgn(a.var)} % población</span><span class="chip i">${fmt(a.nocons_ha)} ha no consolidadas</span>${a.exp_ha>=1?`<span class="chip i">${fmt(a.exp_ha)} ha expansión</span>`:''}${r.vnew_km>0?`<span class="chip v">${fmt1(r.vnew_km)} km vías nuevas</span>`:''}${r.lahar_urb>=1?`<span class="chip w">${fmt1(r.lahar_urb)} % suelo urbano en lahares</span>`:''}${r.ext_ha>=50?`<span class="chip w">${fmt(r.ext_ha)} ha canteras</span>`:''}</span>
+    <p>${c.why}</p><p class="small"><b>Ojo:</b> ${c.risk}</p></div>`;});
+  h+=`</div><div class="corr"><h2>Ya cotizan alto</h2></div><p class="small" style="margin:6px 0">Mediana del lote residencial: ${EXP.map(n=>`${n} USD ${fmt(PRICES[n].res.ppm[1])}/m²`).join(' · ')}. En Tababela, Pifo y Puembo los terrenos grandes (más de 5.000 m²) cuestan bastante menos por m² (USD ${fmt(PRICES['Tababela'].big.ppm)}, ${fmt(PRICES['Pifo'].big.ppm)} y ${fmt(PRICES['Puembo'].big.ppm)}).</p>`;
+  h+=`<div class="corr"><h2>Con pocos datos</h2></div><p class="small" style="margin:6px 0">${FEW.map(n=>`${n} (${PRICES[n].n} anuncios, sobre todo terrenos grandes a unos USD ${fmt(PRICES[n].ppm[1])}/m²)`).join(' · ')}. El precio de un lote pequeño ahí es incierto.</p>`;
+  h+=`<div class="corr"><h2>Todas las parroquias</h2></div><div class="tw"><table class="pt"><thead><tr><th style="text-align:left;padding:6px">Parroquia</th><th style="padding:6px">Lotes res.</th><th style="padding:6px">USD/m² (rango)</th><th style="padding:6px">Precio típico</th><th style="padding:6px">≤ 60 mil</th></tr></thead><tbody>`;
+  Object.entries(PRICES).sort((a,b)=>(a[1].res.n>=8?a[1].res.ppm[1]:999)-(b[1].res.n>=8?b[1].res.ppm[1]:999)).forEach(([n,p])=>{
+    h+=`<tr data-p="${n}"${p.res.n<8?' style="color:#4F5C66"':''}><td>${n}</td><td>${p.res.n}</td><td>${fmt(p.res.ppm[1])} <span class="small">(${fmt(p.res.ppm[0])}–${fmt(p.res.ppm[2])})</span></td><td>${fmt(p.res.usd[1])}</td><td>${p.res.u60}</td></tr>`;});
+  h+=`</tbody></table></div><p class="small">El rango va del percentil 25 al 75. Las filas en gris tienen menos de 8 lotes. Se excluyeron los anuncios de "derechos y acciones" o cesiones fiduciarias (${fmt(Object.values(PRICES).reduce((s,p)=>s+p.der,0))}) y los que no tenían precio o área.</p>`;
+  h+=`<div class="corr"><h2>Antes de comprar</h2></div><ul class="small" style="padding-left:18px">
+   <li>Son precios de oferta, no de venta. Lo normal es negociar.</li>
+   <li>Pide el IRM del lote para confirmar el uso, la altura permitida y si está en suelo urbano o rural.</li>
+   <li>Confirma con la EPMAPS que hay factibilidad de agua y alcantarillado. En el suelo no consolidado muchas veces todavía no la hay.</li>
+   <li>Evita comprar en "derechos y acciones": no te da un lote individual escriturado.</li>
+   <li>Nadie puede garantizar cuánto se va a valorizar un terreno. Estas son señales de demanda, no una proyección de precio, y no es asesoría financiera.</li></ul>`;
+  pt.innerHTML=h;
+  const upd=()=>{lotF.max=+document.getElementById('lotmax').value; lotF.res=document.getElementById('lotres').checked; lotF.calm=document.getElementById('lotcalm').checked; lotF.apx=document.getElementById('lotapx').checked; drawLots(); if(!map.hasLayer(lotLayer)){lotLayer.addTo(map); const c=document.getElementById('ly-lots'); if(c) c.checked=true;}};
+  ['lotmax','lotres','lotcalm','lotapx'].forEach(id=>document.getElementById(id).addEventListener('change',upd)); drawLots();
+})();
+function goPar(n){ setBase('precio'); parr.eachLayer(l=>{ if(l.feature.properties.name===n){ map.flyToBounds(l.getBounds(),{duration:.6,maxZoom:13.5}); l.openTooltip(l.getBounds().getCenter()); }});
+  if(matchMedia('(max-width:900px)').matches) document.getElementById('map').scrollIntoView({behavior:'smooth'}); }
+pt.addEventListener('click',e=>{const c=e.target.closest('[data-p]'); if(c){document.querySelectorAll('.card.cand').forEach(x=>x.classList.toggle('on',x===c)); goPar(c.dataset.p);}});
+pt.addEventListener('keydown',e=>{const c=e.target.closest('.card.cand'); if(c&&(e.key==='Enter'||e.key===' ')){e.preventDefault(); goPar(c.dataset.p);}});
+
+/* ---------- panel: entorno (contaminación) ---------- */
+(function(){
+  const pc=document.getElementById('p-c');
+  const PO={}; D.pollu.forEach(r=>PO[r.name]=r);
+  const bar=(v,c)=>`<span class="bar"><i style="width:${Math.min(v,100)}%;background:${c}"></i></span>`;
+  const rows=Object.keys(PRICES).filter(n=>PO[n]&&PO[n].expo!=null).map(n=>({n,...PO[n],ppm:resPpm(n)})).sort((a,b)=>a.expo-b.expo);
+  let h=`<p class="small" style="margin:0 0 8px">Exposición estimada a <b>tráfico</b> (aire y ruido), <b>industria y canteras</b>, y <b>ríos contaminados</b> en el suelo urbano donde se vive. Se basa en la cercanía a las fuentes, no en mediciones. En el mapa, cada cuadro de 300 m es un sector: verde es más tranquilo y rojo, más expuesto.</p>`;
+  h+=`<div class="corr"><h2>Lo que muestran los datos</h2></div><ul class="small" style="padding-left:18px;color:var(--ink);font-size:13px">
+   <li><b>Las más tranquilas con terrenos baratos</b> son El Quinche (exposición ${fmt1(PO['El Quinche'].expo)}), La Merced (${fmt1(PO['La Merced'].expo)}) y Guayllabamba (${fmt1(PO['Guayllabamba'].expo)}). Las dos primeras tienen pocos anuncios.</li>
+   <li><b>Llano Chico</b> (${fmt1(PO['Llano Chico'].expo)}) combina poca contaminación con fuerte crecimiento, pero ya cuesta USD ${fmt(resPpm('Llano Chico'))}/m².</li>
+   <li><b>Conocoto</b> (${fmt1(PO['Conocoto'].expo)}) es el mejor equilibrio entre las candidatas baratas: ${fmt1(PO['Conocoto'].calm)} % de sus sectores son tranquilos. Conviene evitar los bordes de la Autopista General Rumiñahui y los alrededores de las industrias.</li>
+   <li><b>Calderón</b> (${fmt1(PO['Calderón'].expo)}) y <b>San Antonio</b> (${fmt1(PO['San Antonio'].expo)}) bajan por la industria y las canteras: alcanzan al ${fmt(PO['Calderón'].ind)} % y al ${fmt(PO['San Antonio'].ind)} % de su suelo habitable.</li>
+   <li><b>Pifo</b> es la peor de la lista (${fmt1(PO['Pifo'].expo)}): las canteras e industrias alcanzan al ${fmt(PO['Pifo'].ind)} % de su suelo urbano.</li>
+   <li><b>Tababela</b> sale limpia en aire e industria, pero el ${fmt(PO['Tababela'].ap)} % de su suelo urbano está a menos de 4 km del aeropuerto, con ruido de aviones. En Puembo esa proporción es el ${fmt(PO['Puembo'].ap)} %.</li>
+   <li><b>Ríos:</b> en Alangasí, Amaguaña y Cumbayá, entre el 17 % y el 20 % del suelo urbano queda a menos de 300 m de los ríos San Pedro, Pita o Machángara. El agua potable se capta en las partes altas, antes de que los ríos pasen por la ciudad. Cerca de las riberas el problema es el olor y el cauce contaminado.</li></ul>`;
+  h+=`<div class="corr"><h2>Parroquias con terrenos en venta</h2></div><div class="tw"><table class="pt"><thead><tr><th style="text-align:left;padding:6px">Parroquia</th><th style="padding:6px">Exposición</th><th style="padding:6px">Tráfico</th><th style="padding:6px">Industria</th><th style="padding:6px">Ríos</th><th style="padding:6px">Sectores tranquilos</th><th style="padding:6px">USD/m²</th></tr></thead><tbody>`;
+  rows.forEach(r=>{h+=`<tr data-c="${r.n}"><td>${r.n}${r.ap>=10?' <span class="chip w" style="font-size:10px">aeropuerto</span>':''}</td><td><b>${fmt1(r.expo)}</b></td><td>${bar(r.aire,'#C0503A')}${fmt(r.aire)}%</td><td>${bar(r.ind,'#6D3FA0')}${fmt(r.ind)}%</td><td>${bar(r.agua,'#7A5A2A')}${fmt(r.agua)}%</td><td>${fmt(r.calm)}%</td><td>${r.ppm!=null?fmt(r.ppm):'<span class="small">pocos</span>'}</td></tr>`;});
+  h+=`</tbody></table></div><p class="small">Tráfico, industria y ríos son el % del suelo urbano de la parroquia que está dentro del área de influencia de cada fuente. "Sectores tranquilos" es el % de cuadros con exposición de 10 o menos. Toca una fila para verla en el mapa.</p>`;
+  h+=`<div class="corr"><h2>Cómo se calculó</h2></div><ul class="small" style="padding-left:18px">
+   <li><b>Tráfico:</b> franja de 200 m alrededor de las vías expresas, 120 m de las arteriales y 60 m de las colectoras existentes (red vial de GeoQuito). Allí se concentran el NO₂, las partículas y el ruido del tráfico, que según estudios con datos de la REMMAQ genera cerca del 80 % de los óxidos de nitrógeno de Quito.</li>
+   <li><b>Industria:</b> 500 m alrededor de las zonas de uso industrial del PUGS (IMI, IAI, IAR), 300 m alrededor de las 322 industrias con licencia registradas por el Municipio y 1 km alrededor de las canteras.</li>
+   <li><b>Ríos:</b> 300 m a cada lado de los ríos Machángara, Monjas, San Pedro, Guayllabamba y Pita. La Secretaría de Ambiente los reporta con grasas y aceites muy por encima del límite (0,3 mg/L), y Quito trata solo cerca del 3 % de sus aguas residuales.</li>
+   <li><b>Puntaje:</b> para cada sector, 40 % tráfico, 40 % industria y 20 % ríos. La parroquia suma además un 10 % por densidad de población (35/35/20/10). Va de 0 (sin fuentes cerca) a 100.</li>
+   <li><b>Límites:</b> es un indicador de cercanía, no una medición. La REMMAQ no publica promedios anuales por estación que se pudieran usar aquí. El viento, la topografía y la intensidad real del tráfico cambian la exposición. El radio de 4 km del aeropuerto es solo una referencia, no un mapa de ruido. Antes de comprar, visita el lote a distintas horas.</li></ul>`;
+  pc.innerHTML=h;
+  pc.addEventListener('click',e=>{const r=e.target.closest('tr[data-c]'); if(!r)return; setBase('calma'); parr.eachLayer(l=>{ if(l.feature.properties.name===r.dataset.c){ map.flyToBounds(l.getBounds(),{duration:.6,maxZoom:14}); }}); if(matchMedia('(max-width:900px)').matches) document.getElementById('map').scrollIntoView({behavior:'smooth'});});
+})();
+
+/* ---------- pestañas ---------- */
+function showTab(k){ ['t','c','z','p','n'].forEach(x=>{document.getElementById('t-'+x).setAttribute('aria-selected',x===k); document.getElementById('p-'+x).hidden=x!==k;}); }
+document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('button'); if(b) showTab(b.id.slice(2));});
+setTimeout(()=>map.invalidateSize(),50);
+})();
+</script>
+</body>
+</html>
